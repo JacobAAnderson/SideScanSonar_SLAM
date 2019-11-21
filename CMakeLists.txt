@@ -17,7 +17,7 @@ catkin_package()
 ## Specify additional locations of header files --> Your package locations should be listed before other locations
 include_directories(
   ${catkin_INCLUDE_DIRS}
-  /home/jake/Libraries/isam_v1_7/include
+  /home/jake/Cpp/isam_v1_7/include
   /usr/include/eigen3
 )
 
@@ -37,6 +37,6 @@ add_executable(${PROJECT_NAME}_node src/sss_slam.cpp)
 ## Specify libraries to link a library or executable target against
 target_link_libraries(${PROJECT_NAME}_node
   ${catkin_LIBRARIES}
-	/home/jake/Libraries/isam_v1_7/lib/libisam.a
+	/home/jake/Cpp/isam_v1_7/lib/libisam.a
 	cholmod
 )

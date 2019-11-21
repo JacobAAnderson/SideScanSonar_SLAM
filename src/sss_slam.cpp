@@ -33,8 +33,6 @@ vector<int> feature_indx;
 
 const int isam::Pose2d::dim;
 
-float sonarErr = 1.0;
-
 int getNumFiles(const char* directory, const char* ext) {
   DIR *dir;
   struct dirent *ent;
@@ -102,12 +100,22 @@ void newLandmark_callback(const sensor_msgs::PointCloud& lm_msg, const nav_msgs:
   MatrixXd cov = eye(3);
   cov(0,0) = odom_msg.pose.covariance[0];
   cov(0,1) = odom_msg.pose.covariance[1];
-  cov(1,0) = odom_msg.pose.covariance[2];
+  cov(0,2) = odom_msg.pose.covariance[2];
+
+  cov(1,0) = odom_msg.pose.covariance[3];
   cov(1,1) = odom_msg.pose.covariance[3];
+  cov(1,2) = odom_msg.pose.covariance[5];
+
+  cov(2,0) = odom_msg.pose.covariance[6];
+  cov(2,1) = odom_msg.pose.covariance[7];
+  cov(2,2) = odom_msg.pose.covariance[8];
+
+  Noise  noise3 = Covariance( cov );
+
 //  cout <<"\nCov:\n" << cov << endl;
 
   Pose2d odometry(dX, dY, 0.0); // x,y,theta
-  Noise  noise3 = Covariance( cov );
+
 
   Pose2d_Node* new_pose_node = new Pose2d_Node();
   pose_nodes.push_back(new_pose_node);
@@ -138,7 +146,15 @@ void newLandmark_callback(const sensor_msgs::PointCloud& lm_msg, const nav_msgs:
     dY = lm_msg.points[jj].y - odom_msg.pose.pose.position.y;
 
     Point2d vehicle_measure(dX, dY);                                              // Distance from the vehicle (x,y)
-    Noise noise2 = Covariance( sonarErr * eye(2));
+
+    MatrixXd sonarErr = eye(2);
+    sonarErr(0,0) = lm_msg.channels[jj].values[1];
+    sonarErr(0,1) = lm_msg.channels[jj].values[2];
+    sonarErr(1,0) = lm_msg.channels[jj].values[3];
+    sonarErr(1,1) = lm_msg.channels[jj].values[4];
+
+    Noise noise2 = Covariance( sonarErr );
+
     Pose2d_Point2d_Factor* vehicle_measurement = new Pose2d_Point2d_Factor(new_pose_node, new_landmark, vehicle_measure, noise2);
     slam.add_factor(vehicle_measurement );
     }
@@ -146,10 +162,92 @@ void newLandmark_callback(const sensor_msgs::PointCloud& lm_msg, const nav_msgs:
 //  slam.print_graph();
 //  cout << endl;
 
-}
+ }
 
 
 void closeLoop_callback(const sensor_msgs::PointCloud& lm_msg, const nav_msgs::Odometry& odom_msg ){
+
+  // next pose --------------------------------------------------------------------------------------------------------
+  // connect to previous with odometry measurement
+  int ii = pose_xy.size();                                                        // Calculate odometry between poses
+  float dX = odom_msg.pose.pose.position.x - pose_xy[ii-1][0];
+  float dY = odom_msg.pose.pose.position.y - pose_xy[ii-1][1];
+
+  Pose2d_Node* new_pose_node = new Pose2d_Node();
+  slam.add_node(new_pose_node);
+
+  pose_xy.push_back({odom_msg.pose.pose.position.x, odom_msg.pose.pose.position.y});
+  pose_nodes.push_back(new_pose_node);
+
+  Pose2d odometry(dX, dY, 0.0); // x,y,theta
+
+  MatrixXd cov = eye(3);
+  cov(0,0) = odom_msg.pose.covariance[0];
+  cov(0,1) = odom_msg.pose.covariance[1];
+  cov(0,2) = odom_msg.pose.covariance[2];
+
+  cov(1,0) = odom_msg.pose.covariance[3];
+  cov(1,1) = odom_msg.pose.covariance[3];
+  cov(1,2) = odom_msg.pose.covariance[5];
+
+  cov(2,0) = odom_msg.pose.covariance[6];
+  cov(2,1) = odom_msg.pose.covariance[7];
+  cov(2,2) = odom_msg.pose.covariance[8];
+
+  Noise noise3 = Covariance( cov );
+
+  ii = pose_nodes.size();
+
+  Pose2d_Pose2d_Factor* constraint = new Pose2d_Pose2d_Factor(pose_nodes[ii-2], new_pose_node, odometry, noise3);
+  slam.add_factor(constraint);
+
+  // Connect the Landmarks -----------------------------------------------------------------------------------------------
+  for(int jj = 0; jj < lm_msg.points.size(); jj++ ){
+
+    int indx = static_cast<int>(lm_msg.channels[jj].values[0]) - 1;
+
+//    cout << "\nNode Matching: " << static_cast<int>(lm_msg.channels[jj].values[0]) << endl;
+//    cout << "Target Node:   " << feature_indx[indx] << endl << endl;
+
+    // Add Absoulte posiiton of land mark
+    float dX = lm_msg.points[jj].x - pose_xy[0][0];
+    float dY = lm_msg.points[jj].y - pose_xy[0][1];
+
+    // Connect the pose and the landmark by a measurement
+    dX = lm_msg.points[jj].x - odom_msg.pose.pose.position.x;
+    dY = lm_msg.points[jj].y - odom_msg.pose.pose.position.y;
+
+    Point2d vehicle_measure(dX, dY);                                              // Distance from the vehicle (x,y)
+
+    MatrixXd sonarErr = eye(2);
+    sonarErr(0,0) = lm_msg.channels[jj].values[1];
+    sonarErr(0,1) = lm_msg.channels[jj].values[2];
+    sonarErr(1,0) = lm_msg.channels[jj].values[3];
+    sonarErr(1,1) = lm_msg.channels[jj].values[4];
+
+    Noise noise2 = Covariance( sonarErr );
+    Pose2d_Point2d_Factor* vehicle_measurement = new Pose2d_Point2d_Factor(pose_nodes[ii-1], feature_nodes[indx], vehicle_measure, noise2);
+    slam.add_factor(vehicle_measurement );
+
+//    Point2d_Node* landmark = feature_nodes[indx];
+//    cout << "\nTarget Feature:\n" << landmark->value() << endl;
+
+    }
+
+/*
+  // Display Data
+  cout << "\n" << endl;
+  ROS_INFO("Close Loops");
+  cout << "Odom     --> X: " << odom_msg.pose.pose.position.x << ",  Y: " << endl;
+  //cout << "Odom Err --> X: " << poseErrX << ", Y: " << poseErrY << endl;
+  for(int jj = 0; jj < lm_msg.points.size(); jj++ ){
+    cout << "Match    --> X: " << lm_msg.points[jj].x << ", Y: " << lm_msg.points[jj].y << " indx: " << static_cast<int>(lm_msg.channels[jj].values[0]) << endl;
+    }
+*/
+}
+
+
+void optimize_callback(const nav_msgs::Odometry& odom_msg ){
 
   // next pose --------------------------------------------------------------------------------------------------------
   // connect to previous with odometry measurement
@@ -178,31 +276,8 @@ void closeLoop_callback(const sensor_msgs::PointCloud& lm_msg, const nav_msgs::O
   Pose2d_Pose2d_Factor* constraint = new Pose2d_Pose2d_Factor(pose_nodes[ii-2], new_pose_node, odometry, noise3);
   slam.add_factor(constraint);
 
-  // Connect the Landmarks -----------------------------------------------------------------------------------------------
-  for(int jj = 0; jj < lm_msg.points.size(); jj++ ){
-
-    int indx = static_cast<int>(lm_msg.channels[jj].values[0]) - 1;
-
-//    cout << "\nNode Matching: " << static_cast<int>(lm_msg.channels[jj].values[0]) << endl;
-//    cout << "Target Node:   " << feature_indx[indx] << endl << endl;
-
-    // Add Absoulte posiiton of land mark
-    float dX = lm_msg.points[jj].x - pose_xy[0][0];
-    float dY = lm_msg.points[jj].y - pose_xy[0][1];
-
-    // Connect the pose and the landmark by a measurement
-    dX = lm_msg.points[jj].x - odom_msg.pose.pose.position.x;
-    dY = lm_msg.points[jj].y - odom_msg.pose.pose.position.y;
-
-    Point2d vehicle_measure(dX, dY);                                              // Distance from the vehicle (x,y)
-    Noise noise2 = Covariance( sonarErr * eye(2));
-    Pose2d_Point2d_Factor* vehicle_measurement = new Pose2d_Point2d_Factor(pose_nodes[ii-1], feature_nodes[indx], vehicle_measure, noise2);
-    slam.add_factor(vehicle_measurement );
-
-    }
-
-//  slam.print_graph();
-//  cout << endl;
+  //  slam.print_graph();
+  //  cout << endl;
 
   cout << "Optimize SLAM Graph" << endl;
   slam.batch_optimization();
@@ -228,19 +303,12 @@ void closeLoop_callback(const sensor_msgs::PointCloud& lm_msg, const nav_msgs::O
 
   pub_slam_pose.publish(updatedPose);
 
-/*
-  // Display Data
-  cout << "\n" << endl;
-  ROS_INFO("Close Loops");
-  cout << "Odom     --> X: " << odom_msg.pose.pose.position.x << ",  Y: " << endl;
-  //cout << "Odom Err --> X: " << poseErrX << ", Y: " << poseErrY << endl;
-  for(int jj = 0; jj < lm_msg.points.size(); jj++ ){
-    cout << "Match    --> X: " << lm_msg.points[jj].x << ", Y: " << lm_msg.points[jj].y << " indx: " << static_cast<int>(lm_msg.channels[jj].values[0]) << endl;
-    }
+  /*
   cout <<"\nPose Cov:\n" << cov << endl;
   cout << "New Pose: " << pose << endl;
   cout << "New Cov: \n" << new_cov << endl<< endl;
-*/
+  */
+
 }
 
 
@@ -275,8 +343,9 @@ int main(int argc, char** argv) {
   ros::init(argc, argv, "sss_slam");
   ros::NodeHandle n;
 
-  ros::Subscriber sub1 = n.subscribe("/gps_landmark", 5, gpsLandmark_callback);                // GPS Data Subscriber
-  ros::Subscriber sub2 = n.subscribe("/clearGraph", 5, clearGraph_callback);                // GPS Data Subscriber
+  ros::Subscriber sub1 = n.subscribe("/gps_landmark", 5,  gpsLandmark_callback);              // GPS Data Subscriber
+  ros::Subscriber sub2 = n.subscribe("/clearGraph", 5,    clearGraph_callback);               // GPS Data Subscriber
+  ros::Subscriber sub3 = n.subscribe("/optimizeGraph", 1, optimize_callback);                 // GPS Data Subscriber
 
   message_filters::Subscriber<nav_msgs::Odometry> odom_sub(n,"/odom", 50);                    // Vehicle Position subscriber
   message_filters::Subscriber<sensor_msgs::PointCloud> landmark_sub(n,"/sss_landmark", 50);   // Landmark Subscriber
