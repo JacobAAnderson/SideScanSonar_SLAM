@@ -82,13 +82,13 @@ void gpsLandmark_callback(const nav_msgs::Odometry& gps_msg){
 
 
 void newLandmark_callback(const sensor_msgs::PointCloud& lm_msg, const nav_msgs::Odometry& odom_msg ){
-/*
+
   cout << "\n\nNew Landmark" << endl;
   cout << "Odom     --> X: " << odom_msg.pose.pose.position.x << ",  Y: " << odom_msg.pose.pose.position.y << endl;
   for(int jj = 0; jj < lm_msg.points.size(); jj++ ){
     cout << "Landmark --> X: " << lm_msg.points[jj].x << ", Y: " << lm_msg.points[jj].y << ", indx: " << static_cast<int>(lm_msg.channels[jj].values[0]) << endl;
   }
-*/
+
   // next pose --------------------------------------------------------------------------------------------------------
   // connect to previous with odometry measurement
   int ii = pose_xy.size();                                                        // Calculate odometry between poses
@@ -112,7 +112,7 @@ void newLandmark_callback(const sensor_msgs::PointCloud& lm_msg, const nav_msgs:
 
   Noise  noise3 = Covariance( cov );
 
-//  cout <<"\nCov:\n" << cov << endl;
+  cout <<"\nCov:\n" << cov << endl;
 
   Pose2d odometry(dX, dY, 0.0); // x,y,theta
 
@@ -234,7 +234,7 @@ void closeLoop_callback(const sensor_msgs::PointCloud& lm_msg, const nav_msgs::O
 
     }
 
-/*
+
   // Display Data
   cout << "\n" << endl;
   ROS_INFO("Close Loops");
@@ -243,7 +243,7 @@ void closeLoop_callback(const sensor_msgs::PointCloud& lm_msg, const nav_msgs::O
   for(int jj = 0; jj < lm_msg.points.size(); jj++ ){
     cout << "Match    --> X: " << lm_msg.points[jj].x << ", Y: " << lm_msg.points[jj].y << " indx: " << static_cast<int>(lm_msg.channels[jj].values[0]) << endl;
     }
-*/
+
 }
 
 
@@ -303,11 +303,11 @@ void optimize_callback(const nav_msgs::Odometry& odom_msg ){
 
   pub_slam_pose.publish(updatedPose);
 
-  /*
+
   cout <<"\nPose Cov:\n" << cov << endl;
   cout << "New Pose: " << pose << endl;
   cout << "New Cov: \n" << new_cov << endl<< endl;
-  */
+
 
 }
 
@@ -362,7 +362,14 @@ int main(int argc, char** argv) {
   pub_slam_pose = n.advertise<nav_msgs::Odometry>("slam_update_pose", 10);
 //  pub_slam_feature = n.advertise<sensor_msgs::PointCloud>("slam_update_features", 10);
 
-  cout << "\n\n\nsss_slam node initilaixed\n\nSubscribes to: \n\t/gps_landmark\n\t/sss_landmark\n\t/odom"<< endl;
+  cout << "\n\n\nsss_slam node initilaized\n\nSubscribes to:" << endl;
+  cout << "\t/gps_landmark" << endl;
+  cout << "\t/sss_landmark" << endl;
+  cout << "\t/sss_match" << endl;
+  cout << "\t/odom" << endl;
+  cout << "\t/optimizeGraph" << endl;
+  cout << "\t/clearGraph" << endl;
+
   cout << "\nPublishes: \n\tslam_update_pose \n\n"<< endl;
   ros::spin();
 
